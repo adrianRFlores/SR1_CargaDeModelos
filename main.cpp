@@ -2,68 +2,18 @@
 #include <math.h>
 #include <algorithm>
 #include <SDL2/SDL.h>
-#include "loadOBJ.h"
 #include <omp.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-
-//Framebuffer
-const int FRAMEBUFFER_WIDTH = 1000, FRAMEBUFFER_HEIGHT = 800;
-const int FRAMEBUFFER_SIZE = FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT;
+#include "loadOBJ.hpp"
+#include "color.hpp"
+#include "framebuffer.hpp"
 
 //Matrices de escala, traslación y rotación
 glm::mat4 m = glm::mat4(1.0f); //Solo se inicializa, se define en main
 glm::mat4 scale = glm::mat4(80.0f);
 glm::mat4 translate = glm::translate(glm::mat4(1.0f), glm::vec3(400, 200, 0));
 std::vector<glm::vec4> vec4Array;
-
-struct Color {
-    unsigned char r;
-    unsigned char g;
-    unsigned char b;
-    unsigned char a;
-
-    Color(int red = 0, int green = 0, int blue = 0, int alpha = 255)
-        : r(colorClamp(red)), g(colorClamp(green)), b(colorClamp(blue)), a(colorClamp(alpha)) {}
-
-    private:
-        //Clamp para evitar valores invalidos
-        unsigned char colorClamp(const int value) {
-            if (value > 255) return 255;
-            else if (value < 0) return 0;
-            else return value;
-        }      
-
-};
-
-Color framebuffer[FRAMEBUFFER_SIZE];
-Color currentColor(255,255,255,255);
-Color clearColor(0,0,0,255);
-
-void setCurrentColor(const unsigned char r, const unsigned char g, const unsigned char b, const unsigned char a) {
-	currentColor = Color(r, g, b, a);
-}
-
-void clear() {
-    for (int i = 0; i < FRAMEBUFFER_SIZE; i++) {
-        framebuffer[i] = clearColor;
-    }
-}
-
-//Pone un punto con el color actual en x, y de un vec4
-//c es el alfa del color a dibujar (0 = negro a 1 = 100%)
-inline void point(const glm::vec4& vert, const float c) {
-    if (vert.x+500 >= 0 && vert.x+500 < FRAMEBUFFER_WIDTH && vert.y+400 >= 0 && vert.y+400 < FRAMEBUFFER_HEIGHT) {
-        framebuffer[(int)(vert.y+400) * FRAMEBUFFER_WIDTH + (int)vert.x+500] = Color(currentColor.r * c, currentColor.g * c, currentColor.b * c);
-    }
-}
-
-//Se utiliza solo para el algoritmo de anti-aliasing
-inline void point(const int x, const int y, const float c) {
-    if (x+500 >= 0 && x+500 < FRAMEBUFFER_WIDTH && y+400 >= 0 && y+400 < FRAMEBUFFER_HEIGHT) {
-        framebuffer[(y+400) * FRAMEBUFFER_WIDTH + x + 500] = Color(currentColor.r * c, currentColor.g * c, currentColor.b * c);
-    }
-}
 
 void renderBuffer(SDL_Renderer* renderer) {
     // Create a texture
@@ -224,28 +174,6 @@ void AAtriangle(const glm::vec4& p1, const glm::vec4& p2, const glm::vec4& p3){
     AAline(p1, p2);
     AAline(p2, p3);
     AAline(p3, p1);
-}
-
-//Crea un array ordenado a partir de Face donde cada 3 vertices es una cara
-//Solo se deben llamar los vectores de 3 en 3 luego de esto
-std::vector<glm::vec3> setupVertexArray(const std::vector<glm::vec3>& vertices, const std::vector<Face>& faces) {
-    std::vector<glm::vec3> vertexArray;
-    
-    // For each face
-    for (const auto& face : faces)
-    {
-        // For each vertex in the face
-        for (const auto& vertexIndices : face.vertexIndices)
-        {
-            // Get the vertex position and normal from the input arrays using the indices from the face
-            glm::vec3 vertexPosition = vertices[vertexIndices[0]];
-
-            // Add the vertex position and normal to the vertex array
-            vertexArray.push_back(vertexPosition);
-        }
-    }
-
-    return vertexArray;
 }
 
 //Agarra los vertices en grupos de 3 (porque se supone que están ordenados) y los dibuja con la funcion de linea de bresenham
