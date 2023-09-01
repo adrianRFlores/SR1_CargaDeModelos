@@ -10,20 +10,29 @@
 #include "framebuffer.hpp"
 
 //Matrices de escala, traslación y rotación
-glm::mat4 m = glm::mat4(1.0f); //Solo se inicializa, se define en main
+glm::mat4 m = glm::mat4(1.0f);
 glm::mat4 scale = glm::mat4(80.0f);
 glm::mat4 translate = glm::translate(glm::mat4(1.0f), glm::vec3(400, 200, 0));
 std::vector<glm::vec4> vec4Array;
 
+SDL_Window* window = SDL_CreateWindow("SR1", 50, 50, FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT, 0);
+
+SDL_Renderer* renderer = SDL_CreateRenderer(
+    window,
+    -1,
+    SDL_RENDERER_ACCELERATED
+);
+
+SDL_Texture* texture = SDL_CreateTexture(
+    renderer, 
+    SDL_PIXELFORMAT_ABGR8888,
+    SDL_TEXTUREACCESS_STREAMING,
+    FRAMEBUFFER_WIDTH, 
+    FRAMEBUFFER_HEIGHT
+);
+
 void renderBuffer(SDL_Renderer* renderer) {
     // Create a texture
-    SDL_Texture* texture = SDL_CreateTexture(
-        renderer, 
-        SDL_PIXELFORMAT_ABGR8888,
-        SDL_TEXTUREACCESS_STREAMING,
-        FRAMEBUFFER_WIDTH, 
-        FRAMEBUFFER_HEIGHT
-    );
 
     // Update the texture with the pixel data from the framebuffer
     SDL_UpdateTexture(
@@ -36,8 +45,6 @@ void renderBuffer(SDL_Renderer* renderer) {
     // Copy the texture to the renderer
     SDL_RenderCopy(renderer, texture, NULL, NULL);
 
-    // Destroy the texture
-    SDL_DestroyTexture(texture);
 }
 
 //Método de linea de bresenham
@@ -139,23 +146,23 @@ void AAline(const glm::vec4& p1, const glm::vec4& p2) {
     int ypxl2 = floor(yend);
 
     if(steep) {
-        point(ypxl2, xpxl2, rfpart(yend) * xgap);
-        point(ypxl2+1, xpxl2, fpart(yend) * xgap);
+        point(ypxl2, xpxl2, rfpart(yend) * xgap, gradient);
+        point(ypxl2+1, xpxl2, fpart(yend) * xgap, gradient);
     } else {
-        point(xpxl2, ypxl2, rfpart(yend) * xgap);
-        point(xpxl2, ypxl2+1, fpart(yend) * xgap);
+        point(xpxl2, ypxl2, rfpart(yend) * xgap, gradient);
+        point(xpxl2, ypxl2+1, fpart(yend) * xgap, gradient);
     }
 
     if(steep) {
         for(int x = xpxl1 + 1; x < xpxl2 -1; x++) {
-            point(floor(intery), x, rfpart(intery));
-            point(floor(intery)+1, x, fpart(intery));
+            point(floor(intery), x, rfpart(intery), gradient);
+            point(floor(intery)+1, x, fpart(intery), gradient);
             intery += gradient;
         }
     } else{
         for(int x = xpxl1 + 1; x < xpxl2 -1; x++) {
-            point(x, floor(intery), rfpart(intery));
-            point(x, floor(intery)+1, fpart(intery));
+            point(x, floor(intery), rfpart(intery), gradient);
+            point(x, floor(intery)+1, fpart(intery), gradient);
             intery += gradient;
         }
     }
@@ -178,6 +185,7 @@ void AAtriangle(const glm::vec4& p1, const glm::vec4& p2, const glm::vec4& p3){
 
 //Agarra los vertices en grupos de 3 (porque se supone que están ordenados) y los dibuja con la funcion de linea de bresenham
 void drawTriVec(const std::vector<glm::vec4>& vertexArray){
+    #pragma omp parallel for
     for(int i = 0; i < vertexArray.size(); i +=3){
         triangle(vertexArray[i], vertexArray[i+1], vertexArray[i+2]);
     }
@@ -195,8 +203,7 @@ void render(SDL_Renderer* renderer) {
 
     clear();
 
-    // Cada ciclo, se le aplica la matriz de rotación a cada punto
-    #pragma omp parallel for //paralelismo
+    #pragma omp parallel for
     for (int i = 0; i < vec4Array.size(); i++) {
         vec4Array[i] = m * vec4Array[i];
     }
@@ -211,6 +218,8 @@ void render(SDL_Renderer* renderer) {
 
 int main(int argc, char* argv[]) {
 
+    SDL_Init(SDL_INIT_EVERYTHING);
+
     //Vanidad
     setCurrentColor(255,255,255,255);
 
@@ -219,7 +228,7 @@ int main(int argc, char* argv[]) {
     std::vector<Face> faces;
 
     //Se cargan los vertices y las caras del archivo
-    bool loaded = loadOBJ("nave.obj", vertices, faces);
+    bool loaded = loadOBJ("nave_subsurf.obj", vertices, faces);
     //Se utiliza el resultado de vertices y caras para crear un solo array con los vertices ordenados
     std::vector<glm::vec3> vertexArray = setupVertexArray(vertices, faces);
 
@@ -231,7 +240,7 @@ int main(int argc, char* argv[]) {
 
     //Se define la matriz de rotación
     //se rota por 0.01deg cada ciclo porque si no se pone un límite de fps llega a girar demasiado rapido
-    m = glm::rotate(m, 0.01f, glm::vec3(0.0f, 1.0f, 1.0f)); //Se gira sobre el eje y (vertical) y z (atras/adelante)
+    m = glm::rotate(m, 0.01f, glm::vec3(0.0f, 1.0f, 0.5f)); //Se gira sobre el eje y (vertical) y z (atras/adelante)
 
     for(int i = 0; i<vec4Array.size(); i++){
         vec4Array[i] = m * vec4Array[i];
@@ -242,16 +251,6 @@ int main(int argc, char* argv[]) {
     for(int i = 0; i<vec4Array.size(); i++){
         vec4Array[i] = translate * vec4Array[i];
     }
-
-    SDL_Init(SDL_INIT_EVERYTHING);
-
-    SDL_Window* window = SDL_CreateWindow("SR1", 50, 50, FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT, 0);
-
-    SDL_Renderer* renderer = SDL_CreateRenderer(
-        window,
-        -1,
-        SDL_RENDERER_ACCELERATED
-    );
 
     bool running = true;
     SDL_Event event;
